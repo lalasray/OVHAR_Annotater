@@ -37,6 +37,19 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI
 .number { text-align: right; }
 .label { color: var(--muted); font-size: 12px; margin-top: 12px; margin-bottom: 6px; }
 
+.pose-grid { flex: 3; min-width: 420px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas:
+  "head head head"
+  "upper-left torso upper-right"
+  "lower-left . lower-right";
+gap: 8px; }
+.pose-grid .pose-item { display: flex; flex-direction: column; gap: 4px; }
+.pose-grid .pose-head { grid-area: head; justify-self: center; max-width: 240px; width: 100%; }
+.pose-grid .pose-torso { grid-area: torso; }
+.pose-grid .pose-upper-left { grid-area: upper-left; }
+.pose-grid .pose-upper-right { grid-area: upper-right; }
+.pose-grid .pose-lower-left { grid-area: lower-left; }
+.pose-grid .pose-lower-right { grid-area: lower-right; }
+
 /* Main timeline */
 .timeline-wrap { position: relative; background: #0c121a; border: 1px solid #223042; border-radius: 12px; overflow: hidden; }
 .timeline { position: relative; height: 140px; overflow: auto; white-space: nowrap; scrollbar-color: #32465f #0c121a; }

@@ -648,7 +648,7 @@ function updateNameInputs(){
   const isDual = laneIndex === 1;
   const isSix  = laneIndex === 2;
   dualNameWrap.style.display = isDual ? 'flex' : 'none';
-  sixNameWrap.style.display  = isSix  ? 'flex' : 'none';
+  sixNameWrap.style.display  = isSix  ? 'grid' : 'none';
   singleNameWrap.style.display = (!isDual && !isSix) ? 'block' : 'none';
   // Clear any pre-filled values when the user switches lanes
   clearLabelTextInputs();

@@ -162,30 +162,30 @@
           </div>
         </div>
         <!-- For lane 2: six inputs (at least one required) -->
-        <div id="sixNameWrap" style="display:none; flex:3; min-width:420px; gap:8px; flex-wrap:wrap;">
-          <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
+        <div id="sixNameWrap" class="pose-grid" style="display:none;">
+          <div class="pose-item pose-head">
+            <div class="label" style="margin:0;">Head</div>
+            <input id="head" type="text" class="input" />
+          </div>
+          <div class="pose-item pose-upper-left">
             <div class="label" style="margin:0;">Upper left limb</div>
             <input id="ull" type="text" class="input" />
           </div>
-          <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
-            <div class="label" style="margin:0;">Lower left limb</div>
-            <input id="lll" type="text" class="input" />
-          </div>
-          <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
+          <div class="pose-item pose-upper-right">
             <div class="label" style="margin:0;">Upper right limb</div>
             <input id="urlimb" type="text" class="input" />
           </div>
-          <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
-            <div class="label" style="margin:0;">Lower right limb</div>
-            <input id="lrlimb" type="text" class="input" />
-          </div>
-          <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
+          <div class="pose-item pose-torso">
             <div class="label" style="margin:0;">Torso</div>
             <input id="torso" type="text" class="input" />
           </div>
-          <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
-            <div class="label" style="margin:0;">Head</div>
-            <input id="head" type="text" class="input" />
+          <div class="pose-item pose-lower-left">
+            <div class="label" style="margin:0;">Lower left limb</div>
+            <input id="lll" type="text" class="input" />
+          </div>
+          <div class="pose-item pose-lower-right">
+            <div class="label" style="margin:0;">Lower right limb</div>
+            <input id="lrlimb" type="text" class="input" />
           </div>
         </div>
         <input id="startFrame" type="number" class="number" style="flex:1;" />
