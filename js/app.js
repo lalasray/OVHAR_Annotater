@@ -44,6 +44,10 @@ const playhead = getById('playhead');
 const frameOut = getById('frameOut');
 const timeOut = getById('timeOut');
 const zoom = getById('zoom');
+const videoViewport = getById('videoViewport');
+const videoZoomInput = getById('videoZoom');
+const videoZoomDisplay = getById('videoZoomDisplay');
+const videoZoomReset = getById('videoZoomReset');
 
 // Normalize UI labels/icons in case HTML has encoding issues
 try {
@@ -80,6 +84,16 @@ let totalFrames = 0;
 let rafId = null;
 let selectedFile = null;
 
+let videoZoomLevel = 1;
+let videoOffsetX = 0;
+let videoOffsetY = 0;
+let isVideoDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let dragOriginOffsetX = 0;
+let dragOriginOffsetY = 0;
+let activePointerId = null;
+
 // ---------- Helpers ----------
 const isFiniteNumber = (n) => Number.isFinite(n);
 function getFramesPerLine() {
@@ -111,6 +125,93 @@ function getTickSteps(framesPerLine) {
 }
 function findLabel0RangeFor(start, end) {
   return labelRanges[0].find(r => start >= r.start && end <= r.end);
+}
+function updateVideoZoomDisplay() {
+  if (videoZoomDisplay) videoZoomDisplay.textContent = `${videoZoomLevel.toFixed(2)}×`;
+}
+function clampVideoOffset() {
+  if (!video || !videoViewport) {
+    videoOffsetX = 0;
+    videoOffsetY = 0;
+    return;
+  }
+  if (videoZoomLevel <= 1.0001) {
+    videoOffsetX = 0;
+    videoOffsetY = 0;
+    return;
+  }
+  const baseWidth = video.clientWidth;
+  const baseHeight = video.clientHeight;
+  if (!baseWidth || !baseHeight) {
+    videoOffsetX = 0;
+    videoOffsetY = 0;
+    return;
+  }
+  const maxOffsetX = (videoZoomLevel - 1) * baseWidth * 0.5;
+  const maxOffsetY = (videoZoomLevel - 1) * baseHeight * 0.5;
+  videoOffsetX = Math.min(Math.max(videoOffsetX, -maxOffsetX), maxOffsetX);
+  videoOffsetY = Math.min(Math.max(videoOffsetY, -maxOffsetY), maxOffsetY);
+}
+function applyVideoTransform() {
+  if (!video) return;
+  clampVideoOffset();
+  const translateX = videoOffsetX / videoZoomLevel;
+  const translateY = videoOffsetY / videoZoomLevel;
+  video.style.transform = `scale(${videoZoomLevel}) translate(${translateX}px, ${translateY}px)`;
+  updateVideoZoomDisplay();
+  if (videoViewport) {
+    const canPan = videoZoomLevel > 1.0001;
+    videoViewport.classList.toggle('can-pan', canPan);
+    videoViewport.classList.toggle('is-dragging', canPan && isVideoDragging);
+  }
+}
+function setVideoZoom(value) {
+  const parsed = Number(value);
+  videoZoomLevel = Math.max(1, isFiniteNumber(parsed) ? parsed : 1);
+  clampVideoOffset();
+  if (videoZoomInput && Number(videoZoomInput.value) !== videoZoomLevel) {
+    videoZoomInput.value = String(videoZoomLevel);
+  }
+  applyVideoTransform();
+}
+function resetVideoZoom() {
+  videoOffsetX = 0;
+  videoOffsetY = 0;
+  setVideoZoom(1);
+}
+function handleVideoPointerDown(e) {
+  if (!videoViewport || videoZoomLevel <= 1.0001) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  isVideoDragging = true;
+  activePointerId = e.pointerId ?? null;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  dragOriginOffsetX = videoOffsetX;
+  dragOriginOffsetY = videoOffsetY;
+  if (activePointerId !== null && videoViewport.setPointerCapture) {
+    try { videoViewport.setPointerCapture(activePointerId); } catch {}
+  }
+  applyVideoTransform();
+  e.preventDefault();
+}
+function handleVideoPointerMove(e) {
+  if (!isVideoDragging) return;
+  if (activePointerId !== null && e.pointerId !== activePointerId) return;
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+  videoOffsetX = dragOriginOffsetX + dx;
+  videoOffsetY = dragOriginOffsetY + dy;
+  applyVideoTransform();
+}
+function endVideoDrag(e) {
+  if (!isVideoDragging) return;
+  if (activePointerId !== null && e && e.pointerId !== activePointerId) return;
+  if (activePointerId !== null && videoViewport?.releasePointerCapture) {
+    try { videoViewport.releasePointerCapture(activePointerId); } catch {}
+  }
+  isVideoDragging = false;
+  activePointerId = null;
+  applyVideoTransform();
 }
 function getValidFPS() {
   const n = Number(fpsInput.value);
@@ -254,7 +355,27 @@ video.addEventListener('pause', () => { btnPlay.textContent = '▶ Play'; cancel
 
 fpsInput.addEventListener('change', () => { sanitizeFPSInput(); rebuildTimeline(); });
 zoom.addEventListener('input', () => { userAdjustedZoom = true; rebuildTimeline(); });
-window.addEventListener('resize', rebuildTimeline);
+window.addEventListener('resize', () => { rebuildTimeline(); applyVideoTransform(); });
+
+if (videoZoomInput) {
+  videoZoomInput.addEventListener('input', () => {
+    setVideoZoom(videoZoomInput.value);
+  });
+}
+if (videoZoomReset) {
+  videoZoomReset.addEventListener('click', () => {
+    resetVideoZoom();
+  });
+}
+if (videoViewport) {
+  videoViewport.addEventListener('pointerdown', handleVideoPointerDown);
+  videoViewport.addEventListener('pointermove', handleVideoPointerMove);
+  videoViewport.addEventListener('pointerup', endVideoDrag);
+  videoViewport.addEventListener('pointerleave', endVideoDrag);
+  videoViewport.addEventListener('pointercancel', endVideoDrag);
+}
+
+applyVideoTransform();
 
 btnPrev.addEventListener('click', () => stepFrames(-1));
 btnNext.addEventListener('click', () => stepFrames(1));
@@ -553,6 +674,7 @@ btnLoad.addEventListener('click', () => {
 function loadVideo(src) {
   userAdjustedZoom = false;
   if (zoom) zoom.value = String(DEFAULT_FRAMES_PER_LINE);
+  resetVideoZoom();
   video.src = src;
   video.load();
   video.play().catch(()=>{});
@@ -562,6 +684,7 @@ function loadVideo(src) {
 video.addEventListener('loadedmetadata', () => {
   const d = canSeek() ? video.duration : 0;
   meta.innerHTML = `Duration: <b>${fmtTime(d)}</b><br/>Resolution: <b>${video.videoWidth}×${video.videoHeight}</b>`;
+  resetVideoZoom();
   userAdjustedZoom = false;
   rebuildTimeline();
 });
@@ -922,6 +1045,15 @@ function runSelfTests(){
       const justAdded = labelRanges[1][labelRanges[1].length-1];
       removeRange(justAdded.uid);
     }
+
+    // Test 29: video zoom setter updates state and transform
+    setVideoZoom(2);
+    console.assert(Math.abs(videoZoomLevel - 2) < 1e-6, 'Test29 failed: setVideoZoom should update zoom level');
+    console.assert(video.style.transform.includes('scale(2'), 'Test29b failed: video transform should include scale');
+    // Test 30: resetVideoZoom restores defaults
+    resetVideoZoom();
+    console.assert(Math.abs(videoZoomLevel - 1) < 1e-6, 'Test30 failed: resetVideoZoom should restore zoom level to 1');
+    console.assert(!video.style.transform || video.style.transform.includes('scale(1'), 'Test30b failed: resetVideoZoom should reset transform');
 
     // Clean up the covering lane 0 range for future manual testing
     removeRange(coverL0.uid);

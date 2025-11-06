@@ -80,7 +80,9 @@
     <div class="card">
       <div class="row">
         <div class="col">
-          <video id="video" controls crossorigin="anonymous"></video>
+          <div class="video-viewport" id="videoViewport">
+            <video id="video" controls crossorigin="anonymous"></video>
+          </div>
           <div class="controls">
             <button id="btnPlay" class="btn" style="grid-column: span 2">▶ Play</button>
             <button id="btnPrev" class="btn secondary" title="Prev frame" style="grid-column: span 1">⟨⟨</button>
@@ -94,6 +96,12 @@
               <input id="gotoFrame" type="number" class="number" min="0" value="0" />
             </div>
             <button id="btnGo" class="btn" style="grid-column: span 2">Go</button>
+            <div class="video-zoom-control" style="grid-column: span 12;">
+              <span class="zoom-label">Video Zoom</span>
+              <input id="videoZoom" class="range" type="range" min="1" max="4" step="0.05" value="1" aria-label="Video zoom" />
+              <span id="videoZoomDisplay" class="zoom-value">1.00×</span>
+              <button id="videoZoomReset" class="btn-mini" type="button">Reset</button>
+            </div>
           </div>
           <div class="help">Shortcuts: <span class="kbd">Space</span> play/pause • <span class="kbd">←/→</span> step by 1 frame • <span class="kbd">Home/End</span> to start/end.</div>
         </div>
