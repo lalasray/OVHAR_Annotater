@@ -59,9 +59,10 @@ function initLabelLanes(){
   labelLanes = Array.from(document.querySelectorAll('.label-lane'));
 }
 
-// Store ranges per lane: {id, lane, name, start, end, el}
+// Store ranges per lane: {uid, labelId, lane, name, start, end, el}
 const labelRanges = [[],[],[],[]];
-let nextRangeId = 1;
+let nextRangeUid = 1;
+let nextLabel0Id = 1;
 
 // Layout constants
 const MIN_BAR_PX = 16; // minimum visible width for a range bar
@@ -72,13 +73,45 @@ const DEFAULT_FPS = 30;
 const MIN_FPS = 1;
 const MAX_FPS = 240;
 
-let pxPerFrameBase = 6; // multiplied by zoom
+const DEFAULT_FRAMES_PER_LINE = 100;
+const MIN_FRAMES_PER_LINE = 1;
+let userAdjustedZoom = false;
 let totalFrames = 0;
 let rafId = null;
 let selectedFile = null;
 
 // ---------- Helpers ----------
 const isFiniteNumber = (n) => Number.isFinite(n);
+function getFramesPerLine() {
+  const raw = Number(zoom?.value);
+  const fallback = Math.max(MIN_FRAMES_PER_LINE, DEFAULT_FRAMES_PER_LINE);
+  return (isFiniteNumber(raw) && raw > 0) ? Math.max(MIN_FRAMES_PER_LINE, raw) : fallback;
+}
+function getPxPerFrame() {
+  const framesPerLine = getFramesPerLine();
+  const viewportWidth = Math.max(timeline?.clientWidth || 0, 1);
+  return viewportWidth / framesPerLine;
+}
+function getTickSteps(framesPerLine) {
+  const targetMajorTicks = 10;
+  if (!isFiniteNumber(framesPerLine) || framesPerLine <= 0) {
+    return { minor: 1, major: 10 };
+  }
+  const roughMajor = framesPerLine / targetMajorTicks;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(roughMajor, 1))));
+  const baseCandidates = [1, 2, 5, 10];
+  let major = magnitude;
+  for (const c of baseCandidates) {
+    const step = c * magnitude;
+    major = step;
+    if (roughMajor <= step) break;
+  }
+  const minor = Math.max(1, Math.round(major / 5));
+  return { minor, major: Math.max(1, Math.round(major)) };
+}
+function findLabel0RangeFor(start, end) {
+  return labelRanges[0].find(r => start >= r.start && end <= r.end);
+}
 function getValidFPS() {
   const n = Number(fpsInput.value);
   if (!isFiniteNumber(n) || n < MIN_FPS || n > MAX_FPS) return DEFAULT_FPS;
@@ -117,27 +150,59 @@ function rebuildTimeline() {
   totalFrames = Math.max(0, Math.floor(video.duration * fps));
   gotoInput.max = String(totalFrames);
 
-  const pxPerFrame = pxPerFrameBase * Number(zoom.value || 1);
+  if (zoom) {
+    const total = Math.max(1, totalFrames);
+    const minFrames = MIN_FRAMES_PER_LINE;
+    const maxFrames = Math.max(total, 5000);
+    zoom.min = String(minFrames);
+    zoom.max = String(maxFrames);
+    let current = Number(zoom.value);
+    if (!isFiniteNumber(current) || current <= 0) current = DEFAULT_FRAMES_PER_LINE;
+    if (!userAdjustedZoom) {
+      current = Math.max(minFrames, total);
+    }
+    current = Math.max(minFrames, Math.min(maxFrames, current));
+    if (Number(zoom.value) !== current) zoom.value = String(current);
+    zoom.title = `${Math.round(getFramesPerLine())} frames visible across the viewport`;
+  }
+
+  const pxPerFrame = getPxPerFrame();
   const width = Math.max(totalFrames * pxPerFrame, timeline.clientWidth + 1);
   ticks.style.width = width + 'px';
 
   // draw ticks
   ticks.innerHTML = '';
-  const majorEvery = 10;
-  for (let f = 0; f <= totalFrames; f++) {
+  const framesPerLine = getFramesPerLine();
+  const { minor, major } = getTickSteps(framesPerLine);
+  for (let f = 0; f <= totalFrames; f += minor) {
     const x = f * pxPerFrame;
+    const isMajor = f % major === 0;
     const tick = document.createElement('div');
-    tick.className = 'tick' + (f % majorEvery === 0 ? ' major' : '');
+    tick.className = 'tick' + (isMajor ? ' major' : '');
     tick.style.left = x + 'px';
-    tick.style.height = f % majorEvery === 0 ? '100%' : '70%';
+    tick.style.height = isMajor ? '100%' : '70%';
     ticks.appendChild(tick);
-    if (f % majorEvery === 0) {
+    if (isMajor) {
       const label = document.createElement('div');
       label.className = 'tick-label';
       label.textContent = f;
       label.style.left = x + 'px';
       ticks.appendChild(label);
     }
+  }
+  const remainder = totalFrames % major;
+  if (remainder !== 0) {
+    const lastX = totalFrames * pxPerFrame;
+    const tick = document.createElement('div');
+    tick.className = 'tick major';
+    tick.style.left = lastX + 'px';
+    tick.style.height = '100%';
+    ticks.appendChild(tick);
+    const label = document.createElement('div');
+    label.className = 'tick-label';
+    label.textContent = totalFrames;
+    label.style.left = lastX + 'px';
+    ticks.appendChild(label);
   }
 
   // Ensure lanes are present
@@ -165,7 +230,7 @@ function rebuildTimeline() {
 }
 
 function updatePlayhead() {
-  const pxPerFrame = pxPerFrameBase * Number(zoom.value || 1);
+  const pxPerFrame = getPxPerFrame();
   const curTime = canSeek() ? video.currentTime : 0;
   const curFrame = timeToFrame(curTime);
   playhead.style.left = (curFrame * pxPerFrame) + 'px';
@@ -188,7 +253,8 @@ video.addEventListener('play', () => { btnPlay.textContent = '⏸ Pause'; if (!r
 video.addEventListener('pause', () => { btnPlay.textContent = '▶ Play'; cancelAnimationFrame(rafId); rafId = null; updatePlayhead(); });
 
 fpsInput.addEventListener('change', () => { sanitizeFPSInput(); rebuildTimeline(); });
-zoom.addEventListener('input', rebuildTimeline);
+zoom.addEventListener('input', () => { userAdjustedZoom = true; rebuildTimeline(); });
+window.addEventListener('resize', rebuildTimeline);
 
 btnPrev.addEventListener('click', () => stepFrames(-1));
 btnNext.addEventListener('click', () => stepFrames(1));
@@ -215,7 +281,7 @@ timeline.addEventListener('click', (e) => {
   if (!canSeek()) return;
   const rect = timeline.getBoundingClientRect();
   const x = e.clientX - rect.left + timeline.scrollLeft;
-  const frame = Math.round(x / (pxPerFrameBase * Number(zoom.value || 1)));
+  const frame = Math.round(x / getPxPerFrame());
   goToFrame(frame);
 });
 
@@ -252,10 +318,10 @@ function renderRangeBar(laneIndex, range){
   initLabelLanes();
   const lane = labelLanes[laneIndex];
   if (!lane) { console.warn('Lane not available for index', laneIndex); return null; }
-  const pxPerFrame = pxPerFrameBase * Number(zoom.value || 1);
+  const pxPerFrame = getPxPerFrame();
   const bar = document.createElement('div');
   bar.className = 'range-bar';
-  bar.dataset.id = range.id;
+  bar.dataset.uid = range.uid;
   bar.title = `${range.name} [${range.start}, ${range.end})`;
   const widthPx = Math.max(MIN_BAR_PX,(range.end - range.start) * pxPerFrame);
   bar.style.left = (range.start * pxPerFrame) + 'px';
@@ -268,7 +334,7 @@ function renderRangeBar(laneIndex, range){
   del.style.position = 'absolute';
   del.style.right = '4px';
   del.style.top = '4px';
-  del.addEventListener('click', (e)=>{ e.stopPropagation(); removeRange(range.id); });
+  del.addEventListener('click', (e)=>{ e.stopPropagation(); removeRange(range.uid); });
   bar.appendChild(del);
 
   lane.appendChild(bar);
@@ -281,7 +347,7 @@ function layoutLaneBars(laneIndex){
   initLabelLanes();
   const lane = labelLanes[laneIndex];
   if (!lane) return;
-  const pxPerFrame = pxPerFrameBase * Number(zoom.value || 1);
+  const pxPerFrame = getPxPerFrame();
   const items = [...labelRanges[laneIndex]];
   items.sort((a,b)=> (a.start-b.start) || (a.end-b.end));
   const rowsLastEnd = [];
@@ -307,27 +373,85 @@ function layoutAllLanes(){
   for (let i=0;i<labelLanes.length;i++) layoutLaneBars(i);
 }
 
-function addRange(laneIndex, name, start, end){
+function addRange(laneIndex, name, start, end, options = {}){
   if (!Number.isFinite(start) || !Number.isFinite(end)) { alert('Start/End must be numbers'); return; }
   start = Math.max(0, Math.floor(start));
   end = Math.max(0, Math.floor(end));
   if (end <= start) { alert('End must be > Start (exclusive)'); return; }
   if (canSeek() && totalFrames>0 && start > totalFrames) { alert('Start is beyond video length'); return; }
 
-  const r = { id: nextRangeId++, lane: laneIndex, name: name || `Range ${Date.now()}`, start, end, el: null };
+  const coerceInt = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.floor(n) : null;
+  };
+
+  let labelId;
+  if (laneIndex === 0) {
+    const override = coerceInt(options.labelId);
+    if (override && override > 0) {
+      labelId = override;
+      if (labelId >= nextLabel0Id) nextLabel0Id = labelId + 1;
+    } else {
+      labelId = nextLabel0Id++;
+    }
+  } else if (laneIndex > 0) {
+    let parent = null;
+    const override = coerceInt(options.labelId);
+    if (override && override > 0) {
+      parent = labelRanges[0].find(r => r.labelId === override);
+    }
+    if (!parent) parent = findLabel0RangeFor(start, end);
+    if (!parent) {
+      alert(`Lane ${laneIndex} labels must fall within an existing label 0 range.`);
+      return;
+    }
+    labelId = parent.labelId;
+  } else {
+    labelId = nextRangeUid;
+  }
+
+  let uid;
+  const overrideUid = coerceInt(options.uid);
+  if (overrideUid && overrideUid > 0) {
+    uid = overrideUid;
+    if (uid >= nextRangeUid) nextRangeUid = uid + 1;
+  } else {
+    uid = nextRangeUid++;
+  }
+
+  const r = { uid, labelId, lane: laneIndex, name: name || `Range ${Date.now()}`, start, end, el: null };
   labelRanges[laneIndex].push(r);
   renderRangeBar(laneIndex, r);
   refreshRangesTable();
   layoutLaneBars(laneIndex);
 }
 
-function removeRange(id){
+function clearChildLanesByLabel(labelId) {
+  let removedAny = false;
+  for (let laneIndex = 1; laneIndex < labelRanges.length; laneIndex++) {
+    const lane = labelRanges[laneIndex];
+    let laneRemoved = false;
+    for (let i = lane.length - 1; i >= 0; i--) {
+      if (lane[i].labelId === labelId) {
+        const [removed] = lane.splice(i, 1);
+        if (removed?.el && removed.el.parentNode) removed.el.parentNode.removeChild(removed.el);
+        removedAny = true;
+        laneRemoved = true;
+      }
+    }
+    if (laneRemoved) layoutLaneBars(laneIndex);
+  }
+  return removedAny;
+}
+
+function removeRange(uid){
   for (let laneIndex=0; laneIndex<labelRanges.length; laneIndex++){
     const arr = labelRanges[laneIndex];
-    const i = arr.findIndex(r => r.id === id);
+    const i = arr.findIndex(r => r.uid === uid);
     if (i >= 0){
       const [r] = arr.splice(i,1);
       if (r.el && r.el.parentNode) r.el.parentNode.removeChild(r.el);
+      if (r.lane === 0) clearChildLanesByLabel(r.labelId);
       refreshRangesTable();
       layoutLaneBars(laneIndex);
       return;
@@ -340,10 +464,10 @@ function refreshRangesTable(){
   labelRanges.forEach((arr, laneIndex)=>{
     arr.forEach(r=>{
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${r.id}</td><td>${laneIndex}</td><td>${r.name}</td><td>${r.start}</td><td>${r.end}</td>`;
+      tr.innerHTML = `<td>${r.labelId}</td><td>${laneIndex}</td><td>${r.name}</td><td>${r.start}</td><td>${r.end}</td>`;
       const tdAct = document.createElement('td');
       const btnDel = document.createElement('button'); btnDel.className='btn-mini'; btnDel.textContent='Delete';
-      btnDel.addEventListener('click', ()=> removeRange(r.id));
+      btnDel.addEventListener('click', ()=> removeRange(r.uid));
       tdAct.appendChild(btnDel);
       tr.appendChild(tdAct);
       rangesTbody.appendChild(tr);
@@ -426,12 +550,19 @@ btnLoad.addEventListener('click', () => {
   loadVideo(url.value.trim());
 });
 
-function loadVideo(src) { video.src = src; video.load(); video.play().catch(()=>{}); }
+function loadVideo(src) {
+  userAdjustedZoom = false;
+  if (zoom) zoom.value = String(DEFAULT_FRAMES_PER_LINE);
+  video.src = src;
+  video.load();
+  video.play().catch(()=>{});
+}
 
 // When metadata is ready, build timeline
 video.addEventListener('loadedmetadata', () => {
   const d = canSeek() ? video.duration : 0;
   meta.innerHTML = `Duration: <b>${fmtTime(d)}</b><br/>Resolution: <b>${video.videoWidth}×${video.videoHeight}</b>`;
+  userAdjustedZoom = false;
   rebuildTimeline();
 });
 
@@ -461,7 +592,9 @@ function serializeLabels() {
   };
   for (let i = 0; i < labelRanges.length; i++) {
     const items = labelRanges[i].map(r => ({
-      id: r.id,
+      id: r.labelId,
+      labelId: r.labelId,
+      uid: r.uid,
       name: r.name,
       startFrame: r.start,
       endFrame: r.end,
@@ -503,8 +636,8 @@ function baseNameFromVideo() {
 function clearAllRanges() {
   for (let laneIndex = 0; laneIndex < labelRanges.length; laneIndex++) {
     // copy ids to avoid mutation issues while removing
-    const ids = labelRanges[laneIndex].map(r => r.id);
-    ids.forEach(id => removeRange(id));
+    const uids = labelRanges[laneIndex].map(r => r.uid);
+    uids.forEach(id => removeRange(id));
   }
 }
 
@@ -522,19 +655,23 @@ function importLabelsObject(obj) {
     return 0;
   };
 
-  obj.lanes.forEach(l => {
+  const lanesSorted = [...obj.lanes].sort((a,b) => (Number(a.lane)||0) - (Number(b.lane)||0));
+  lanesSorted.forEach(l => {
     const laneIndex = Number(l.lane);
     if (!Number.isFinite(laneIndex) || laneIndex < 0 || laneIndex >= labelRanges.length) return; // skip invalid
     (l.items || []).forEach(item => {
       const name = (item.name || '').toString();
       const start = toFrame(item, 'startFrame', 'startTime');
       const end = toFrame(item, 'endFrame', 'endTime');
-      addRange(laneIndex, name, start, end);
+      const labelId = Number.isFinite(item.labelId) ? Number(item.labelId) : Number(item.id);
+      const uid = Number.isFinite(item.uid) ? Number(item.uid) : null;
+      addRange(laneIndex, name, start, end, { labelId, uid });
     });
   });
 
   refreshRangesTable();
   layoutAllLanes();
+  userAdjustedZoom = false;
   rebuildTimeline();
 }
 
@@ -575,6 +712,8 @@ if (btnImport && importJsonInput) {
 
 // ---------------- Dev self-tests ----------------
 function runSelfTests(){
+  const savedNextRangeUid = nextRangeUid;
+  const savedNextLabel0Id = nextLabel0Id;
   try {
     // === Existing tests (unchanged) ===
     fpsInput.value = 30;
@@ -609,9 +748,13 @@ function runSelfTests(){
     addRange(0, 'test', 10, 20);
     console.assert(labelRanges[0].length === preCount + 1, 'Test9 failed: addRange should push to lane');
     // Test 10: removeRange
-    const newId = labelRanges[0][labelRanges[0].length-1].id;
-    removeRange(newId);
-    console.assert(labelRanges[0].every(r => r.id !== newId), 'Test10 failed: removeRange should delete the range');
+    const newUid = labelRanges[0][labelRanges[0].length-1].uid;
+    removeRange(newUid);
+    console.assert(labelRanges[0].every(r => r.uid !== newUid), 'Test10 failed: removeRange should delete the range');
+
+    // Provide a covering label 0 range for downstream tests
+    addRange(0, 'cover', 0, 200);
+    const coverL0 = labelRanges[0][labelRanges[0].length-1];
 
     // Test 11: keyboard shortcuts are disabled when typing
     const inputEl = getById('labelName');
@@ -638,11 +781,11 @@ function runSelfTests(){
     console.assert(isFinite(video.currentTime) && video.currentTime === timeBefore, 'Test13 failed: goToFrame with invalid should not change currentTime');
 
     // Test 14: very short range should still be min width
-    const pxPerFrame = pxPerFrameBase * Number(zoom.value || 1);
+    const pxPerFrame = getPxPerFrame();
     addRange(0,'tiny',100,101);
     const tiny = labelRanges[0][labelRanges[0].length-1];
     console.assert(tiny.el && parseFloat(tiny.el.style.width) >= MIN_BAR_PX, 'Test14 failed: tiny range should have minimum pixel width');
-    removeRange(tiny.id);
+    removeRange(tiny.uid);
 
     // Test 15: overlapping ranges should stack vertically
     const baseCount = labelRanges[1].length;
@@ -651,7 +794,8 @@ function runSelfTests(){
     const a = labelRanges[1][baseCount];
     const b = labelRanges[1][baseCount+1];
     console.assert(a.el && b.el && a.el.style.top !== b.el.style.top, 'Test15 failed: overlapping bars did not stack');
-    removeRange(a.id); removeRange(b.id);
+    console.assert(a.labelId === coverL0.labelId && b.labelId === coverL0.labelId, 'Test15b failed: lane1 ranges should inherit label0 id');
+    removeRange(a.uid); removeRange(b.uid);
 
     // Test 16: lane 1 requires at least one of the two texts
     const preLane1 = labelRanges[1].length;
@@ -668,7 +812,8 @@ function runSelfTests(){
     console.assert(labelRanges[1].length === preLane1+1, 'Test17 failed: should add when upper provided');
     const last1 = labelRanges[1][labelRanges[1].length-1];
     console.assert(last1.name.includes('UpperOnly'), 'Test17b failed: composed name should include upper text');
-    removeRange(last1.id);
+    console.assert(last1.labelId === coverL0.labelId, 'Test17c failed: lane1 range should reuse label0 id');
+    removeRange(last1.uid);
 
     // Test 18: lane 1 accepts both and composes name with separator
     upperTextInput.value='U'; lowerTextInput.value='L';
@@ -676,7 +821,14 @@ function runSelfTests(){
     btnAddLabel.click();
     const last2 = labelRanges[1][labelRanges[1].length-1];
     console.assert(last2.name.includes('U • L'), 'Test18 failed: name should be "U • L" when both provided');
-    removeRange(last2.id);
+    removeRange(last2.uid);
+
+    // Test 18b: lane 1 cannot add outside label 0 coverage
+    const beforeInvalidLane1 = labelRanges[1].length;
+    upperTextInput.value='Outside'; lowerTextInput.value='';
+    startFrameInput.value='250'; endFrameInput.value='255';
+    btnAddLabel.click();
+    console.assert(labelRanges[1].length === beforeInvalidLane1, 'Test18b failed: lane 1 range should be rejected when outside label 0 span');
 
     // Test 19: lane 2 requires at least one value
     laneSelect.value = '2'; updateNameInputs();
@@ -693,7 +845,8 @@ function runSelfTests(){
       console.assert(labelRanges[2].length === beforeL2+1, 'Test20 failed: lane 2 should add when one field provided');
       const lastL2a = labelRanges[2][labelRanges[2].length-1];
       console.assert(lastL2a.name.includes('UL'), 'Test20b failed: lane 2 composed name should contain provided part');
-      removeRange(lastL2a.id);
+      console.assert(lastL2a.labelId === coverL0.labelId, 'Test20c failed: lane 2 range should reuse label0 id');
+      removeRange(lastL2a.uid);
 
       // Test 21: lane 2 composes multiple fields with separator
       ullInput.value='UL'; lllInput.value='LL'; urlimbInput.value='UR'; lrlimbInput.value='LR'; torsoInput.value='T'; headInput.value='H';
@@ -701,7 +854,16 @@ function runSelfTests(){
       btnAddLabel.click();
       const lastL2b = labelRanges[2][labelRanges[2].length-1];
       console.assert(lastL2b.name.includes('UL • LL • UR • LR • T • H'), 'Test21 failed: lane 2 name should join all non-empty fields');
-      removeRange(lastL2b.id);
+      console.assert(lastL2b.labelId === coverL0.labelId, 'Test21b failed: lane 2 multi-field range should reuse label0 id');
+      removeRange(lastL2b.uid);
+
+      // Test 21c: lane 2 cannot add outside label 0 coverage
+      const beforeInvalidLane2 = labelRanges[2].length;
+      ullInput.value='Outside';
+      startFrameInput.value='250'; endFrameInput.value='255';
+      btnAddLabel.click();
+      console.assert(labelRanges[2].length === beforeInvalidLane2, 'Test21c failed: lane 2 range should be rejected when outside label 0 span');
+      ullInput.value='';
     }
 
     // Test 22: lane 3 shows Center of mass placeholder
@@ -714,15 +876,25 @@ function runSelfTests(){
     btnAddLabel.click();
     const lastL3 = labelRanges[3][labelRanges[3].length-1];
     console.assert(lastL3 && lastL3.name === 'Center of mass', 'Test23 failed: lane 3 default name should be "Center of mass"');
-    removeRange(lastL3.id);
+    console.assert(lastL3.labelId === coverL0.labelId, 'Test23b failed: lane 3 default range should reuse label0 id');
+    removeRange(lastL3.uid);
     labelNameInput.value = ''; // cleanup test residue so UI doesn't keep COM text
     // Test 24: lane 3 uses custom input when provided
     labelNameInput.value = 'COM Custom';
     btnAddLabel.click();
     const lastL3c = labelRanges[3][labelRanges[3].length-1];
     console.assert(lastL3c && lastL3c.name === 'COM Custom', 'Test24 failed: lane 3 should use custom input value');
-    removeRange(lastL3c.id);
+    console.assert(lastL3c.labelId === coverL0.labelId, 'Test24b failed: lane 3 custom range should reuse label0 id');
+    removeRange(lastL3c.uid);
     labelNameInput.value = ''; // cleanup test residue
+
+    // Test 24c: lane 3 cannot add outside label 0 coverage
+    const beforeInvalidLane3 = labelRanges[3].length;
+    labelNameInput.value = 'Outside lane3';
+    startFrameInput.value='250'; endFrameInput.value='255';
+    btnAddLabel.click();
+    console.assert(labelRanges[3].length === beforeInvalidLane3, 'Test24c failed: lane 3 range should be rejected when outside label 0 span');
+    labelNameInput.value = '';
 
     // Test 25: lane 1 inputs have no placeholders
     laneSelect.value = '1'; updateNameInputs();
@@ -748,12 +920,18 @@ function runSelfTests(){
     // Clean up the test-created range so the table starts empty
     if (labelRanges[1].length) {
       const justAdded = labelRanges[1][labelRanges[1].length-1];
-      removeRange(justAdded.id);
+      removeRange(justAdded.uid);
     }
+
+    // Clean up the covering lane 0 range for future manual testing
+    removeRange(coverL0.uid);
 
     console.log('%cSelf-tests passed', 'color:#3ad29f');
   } catch (e) {
     console.warn('Self-tests encountered an issue:', e);
+  } finally {
+    nextRangeUid = savedNextRangeUid;
+    nextLabel0Id = savedNextLabel0Id;
   }
 }
 
