@@ -85,8 +85,11 @@ gap: 8px; }
 /* table styles */
 #rangesWrap{ margin-top:16px; }
 #rangesTable{ width:100%; border-collapse:collapse; font-size:12px; }
+#rangesTable thead{ display:table; width:100%; table-layout:fixed; }
 #rangesTable th, #rangesTable td{ border:1px solid #223042; padding:6px 8px; text-align:left; }
 #rangesTable th{ background:#121a25; color:var(--muted); }
+#rangesTable tbody{ display:block; max-height:220px; overflow:auto; }
+#rangesTable tbody tr{ display:table; width:100%; table-layout:fixed; }
 #rangesTable tbody tr{ transition: background 0.15s ease; }
 #rangesTable tbody tr.lane-color-0{ background: rgba(100,210,255,0.12); }
 #rangesTable tbody tr.lane-color-1{ background: rgba(160,232,135,0.12); }
