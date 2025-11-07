@@ -585,6 +585,7 @@ function refreshRangesTable(){
   labelRanges.forEach((arr, laneIndex)=>{
     arr.forEach(r=>{
       const tr = document.createElement('tr');
+      tr.classList.add(`lane-color-${laneIndex}`);
       tr.innerHTML = `<td>${r.labelId}</td><td>${laneIndex}</td><td>${r.name}</td><td>${r.start}</td><td>${r.end}</td>`;
       const tdAct = document.createElement('td');
       const btnDel = document.createElement('button'); btnDel.className='btn-mini'; btnDel.textContent='Delete';

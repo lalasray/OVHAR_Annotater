@@ -87,3 +87,8 @@ gap: 8px; }
 #rangesTable{ width:100%; border-collapse:collapse; font-size:12px; }
 #rangesTable th, #rangesTable td{ border:1px solid #223042; padding:6px 8px; text-align:left; }
 #rangesTable th{ background:#121a25; color:var(--muted); }
+#rangesTable tbody tr{ transition: background 0.15s ease; }
+#rangesTable tbody tr.lane-color-0{ background: rgba(100,210,255,0.12); }
+#rangesTable tbody tr.lane-color-1{ background: rgba(160,232,135,0.12); }
+#rangesTable tbody tr.lane-color-2{ background: rgba(255,209,102,0.12); }
+#rangesTable tbody tr.lane-color-3{ background: rgba(255,107,107,0.12); }
