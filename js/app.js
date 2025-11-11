@@ -31,6 +31,8 @@ const torsoInput = getById('torso');
 const headInput = getById('head');
 const startFrameInput = getById('startFrame');
 const endFrameInput = getById('endFrame');
+const btnStartFromEnd = getById('btnStartFromEnd');
+const btnEndFromPlayhead = getById('btnEndFromPlayhead');
 const btnAddLabel = getById('btnAddLabel');
 const rangesTbody = getById('rangesTbody');
 const btnExport = getById('btnExport');
@@ -380,6 +382,30 @@ applyVideoTransform();
 btnPrev.addEventListener('click', () => stepFrames(-1));
 btnNext.addEventListener('click', () => stepFrames(1));
 btnGo.addEventListener('click', () => goToFrame(Number(gotoInput.value)));
+
+// Quick-fill helpers for labeling
+function getCurrentFrame() {
+  return timeToFrame(canSeek() ? video.currentTime : 0);
+}
+if (btnStartFromEnd) {
+  btnStartFromEnd.addEventListener('click', () => {
+    const endVal = Number(endFrameInput.value);
+    if (!Number.isFinite(endVal)) return;
+    let nextStart = Math.floor(endVal) + 1;
+    if (canSeek() && totalFrames > 0) nextStart = Math.min(nextStart, totalFrames);
+    startFrameInput.value = String(nextStart);
+    if (startFrameInput.select) startFrameInput.select();
+    startFrameInput.focus();
+  });
+}
+if (btnEndFromPlayhead) {
+  btnEndFromPlayhead.addEventListener('click', () => {
+    const cf = getCurrentFrame();
+    endFrameInput.value = String(cf);
+    if (endFrameInput.select) endFrameInput.select();
+    endFrameInput.focus();
+  });
+}
 
 function stepFrames(delta) {
   if (!canSeek()) return;
