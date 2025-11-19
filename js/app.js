@@ -51,6 +51,12 @@ const videoZoomInput = getById('videoZoom');
 const videoZoomDisplay = getById('videoZoomDisplay');
 const videoZoomReset = getById('videoZoomReset');
 
+//deepika 
+// const btnSpeed = document.getElementById('btnSpeed');
+// let slow = false;
+
+const speeds = [0.25, 0.5, 0.75, 1.0];
+let speedIndex = 0;
 // Normalize UI labels/icons in case HTML has encoding issues
 try {
   if (btnPlay) btnPlay.textContent = '▶ Play';
@@ -354,6 +360,27 @@ function tick() { updatePlayhead(); rafId = requestAnimationFrame(tick); }
 btnPlay.addEventListener('click', () => { if (video.paused) video.play(); else video.pause(); });
 video.addEventListener('play', () => { btnPlay.textContent = '⏸ Pause'; if (!rafId) rafId = requestAnimationFrame(tick); });
 video.addEventListener('pause', () => { btnPlay.textContent = '▶ Play'; cancelAnimationFrame(rafId); rafId = null; updatePlayhead(); });
+
+//deepika
+
+// btnSpeed.addEventListener('click', () => {
+//   slow = !slow;
+//   if (slow) {
+//     video.playbackRate = 0.5;
+//     btnSpeed.textContent = "0.5× Speed";
+//   } else {
+//     video.playbackRate = 1.0;
+//     btnSpeed.textContent = "1.0× Speed";
+//   }
+// });
+btnSpeed.addEventListener('click', () => {
+  speedIndex = (speedIndex + 1) % speeds.length;
+  const newSpeed = speeds[speedIndex];
+
+  video.playbackRate = newSpeed;
+  btnSpeed.textContent = newSpeed + "× Speed";
+});
+
 
 fpsInput.addEventListener('change', () => { sanitizeFPSInput(); rebuildTimeline(); });
 zoom.addEventListener('input', () => { userAdjustedZoom = true; rebuildTimeline(); });
